@@ -11,6 +11,8 @@ export const useWalletStore = defineStore('wallet', {
       address: '',
       provider: null,
       acc_short: '',
+      message: '',
+      signature: '',
     }
   },
 
@@ -23,6 +25,10 @@ export const useWalletStore = defineStore('wallet', {
         0,
         2
       )}...${payload.address.slice(-4)}`
+    },
+    saveSignature(message: string, signature: string) {
+      this.message = message
+      this.signature = signature
     },
   },
 })

@@ -65,7 +65,7 @@
           />
         </svg>
         {{
-          trxInProgress ? `Processing...` : `Bridge to ${destinationNetwork}`
+          trxInProgress ? `Proces]ng...` : `Bridge to ${destinationNetwork}`
         }}
       </button>
     </form>
@@ -107,7 +107,7 @@ export default defineComponent({
 
     const bridgeWallet = import.meta.env.VITE_BRIDGE_WALLET
 
-    const provider = new ethers.providers.Web3Provider(window.ethereum)
+    const provider = new ethers.BrowserProvider(window.ethereum)
     // get the account that will pay for the trasaction
     const signer = provider.getSigner()
 
@@ -150,6 +150,7 @@ export default defineComponent({
           trxInProgress.value = false
         }
       }
+    }
       
     const getRetreivingAddress = async function() {
       const { data } = await axios.get(import.meta.env.VITE_BACKEND_API + '/receive_address');

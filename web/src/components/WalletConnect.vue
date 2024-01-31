@@ -1,36 +1,33 @@
 <template>
   <div class="flex justify-center">
-    <button
-      v-if="!network_ok"
-      @click="switchOrAdd()"
-      class="w-auto inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-pink-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-pink-700"
-    >
+    <button v-if="!network_ok" @click="switchOrAdd()"
+      class="w-auto inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-pink-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-pink-700">
       Wrong network. Switch to {{ targetNetwork }}
     </button>
-    <button
-      v-else
-      type="button"
-      :disabled="walletStore.address != ''"
-      :class="walletStore.address == '' ? 'hover:bg-indigo-600' : ''"
-      @click="connectWallet()"
-      class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-indigo-500"
-    >
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        class="h-5 w-5 mr-2"
-        viewBox="0 0 20 20"
-        fill="currentColor"
-      >
-        <path
-          fill-rule="evenodd"
+    <button v-else type="button" :disabled="walletStore.address != ''"
+      :class="walletStore.address == '' ? 'hover:bg-indigo-600' : ''" @click="connectWallet()"
+      class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-indigo-500">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+        <path fill-rule="evenodd"
           d="M17.778 8.222c-4.296-4.296-11.26-4.296-15.556 0A1 1 0 01.808 6.808c5.076-5.077 13.308-5.077 18.384 0a1 1 0 01-1.414 1.414zM14.95 11.05a7 7 0 00-9.9 0 1 1 0 01-1.414-1.414 9 9 0 0112.728 0 1 1 0 01-1.414 1.414zM12.12 13.88a3 3 0 00-4.242 0 1 1 0 01-1.415-1.415 5 5 0 017.072 0 1 1 0 01-1.415 1.415zM9 16a1 1 0 011-1h.01a1 1 0 110 2H10a1 1 0 01-1-1z"
-          clip-rule="evenodd"
-        />
+          clip-rule="evenodd" />
       </svg>
       <span class="">{{
         walletStore.address != ''
-          ? `Connected Acc ${walletStore.acc_short}`
-          : `Connect Wallet`
+        ? `Connected Acc ${walletStore.acc_short}`
+        : `Connect Wallet`
+      }}</span>
+    </button>
+  </div>
+  <div style="margin-top: 12px;">
+    <button v-if="walletStore.address != '' && walletStore.signature == ''" type="button" @click="signInWithEthereum()"
+      class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-indigo-500">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+        <path fill-rule="evenodd"
+          d="M17.778 8.222c-4.296-4.296-11.26-4.296-15.556 0A1 1 0 01.808 6.808c5.076-5.077 13.308-5.077 18.384 0a1 1 0 01-1.414 1.414zM14.95 11.05a7 7 0 00-9.9 0 1 1 0 01-1.414-1.414 9 9 0 0112.728 0 1 1 0 01-1.414 1.414zM12.12 13.88a3 3 0 00-4.242 0 1 1 0 01-1.415-1.415 5 5 0 017.072 0 1 1 0 01-1.415 1.415zM9 16a1 1 0 011-1h.01a1 1 0 110 2H10a1 1 0 01-1-1z"
+          clip-rule="evenodd" />
+      </svg>
+      <span class="">{{`Sign In`
       }}</span>
     </button>
   </div>
@@ -38,6 +35,8 @@
 
 <script lang="ts">
 import { defineComponent, ref } from 'vue'
+import { BrowserProvider } from 'ethers';
+import { SiweMessage } from 'siwe';
 
 import { useWalletStore } from '../stores/wallet'
 
@@ -122,6 +121,58 @@ export default defineComponent({
       // refresh
       window.location.reload()
     }
+    const domain = window.location.host;
+    const origin = window.location.origin;
+    const provider = new BrowserProvider(window.ethereum);
+
+    const BACKEND_ADDR = "http://localhost:4000";
+
+    async function createSiweMessage(address, statement) {
+      const res = await fetch(`${BACKEND_ADDR}/nonce`);
+      const todayDate = new Date()
+      todayDate.setDate(todayDate.getDate() + 1)
+      const message = new SiweMessage({
+        domain,
+        address,
+        statement,
+        uri: origin,
+        version: '1',
+        chainId: 5,
+        nonce: await res.text(),
+        expirationTime: todayDate.toString(),
+      });
+      return message.prepareMessage();
+    }
+
+    let message = null;
+    let signature = null;
+
+    async function signInWithEthereum() {
+      const signer = await provider.getSigner();
+
+      message = await createSiweMessage(
+        await signer.address,
+        'Sign in with Ethereum to the app.'
+      );
+      console.log(message);
+      signature = await signer.signMessage(message);
+      console.log(signature);
+      sendForVerification(message, signature)
+    }
+
+    async function sendForVerification(message: string, signature: string) {
+      const res = await fetch(`${BACKEND_ADDR}/verify`, {
+        method: "POST",
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ message, signature }),
+      });
+      const result = await res.text();
+      if (result) {
+        walletStore.saveSignature(message, signature)
+      }
+    }
     // checks network and connects wallet
     const connectWallet = async () => {
       if (!network_ok.value) await switchNetwork()
@@ -141,14 +192,16 @@ export default defineComponent({
         console.error('Error connecting DApp to your wallet')
         console.error(error)
       }
+
+
     }
     return {
       connectWallet,
       walletStore,
       checkNetwork,
-
+      signInWithEthereum,
       network_ok,
-
+      sendForVerification,
       switchOrAdd,
     }
   },
