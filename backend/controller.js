@@ -10,6 +10,7 @@ import {
 
 import CHSD_ABIJSON from './ChainstackDollars.json' with { type: "json" };
 import QCHSD_ABIJSON from './DChainstackDollars.json' with { type: "json" };
+import { requestsCollection } from "./mongoConfig.js";
 
 const provider = new ethers.AnkrProvider('goerli', process.env.ANKR_KEY);
 
@@ -24,7 +25,7 @@ const BRIDGE_WALLET_KEY = process.env.BRIDGE_PRIV_KEY
 export async function checkDeposit() {
   console.log("💰 DEPOSIT CHECKING")
   let query = { $and: [{ completed: false }, { deposited: false }] };
-  let result = await collection.find(query)
+  let result = await requestsCollection.find(query)
     .toArray();
 
   console.log("connected", result)
@@ -41,7 +42,7 @@ export async function checkDeposit() {
       if (data.results.length == 0) {
         if (new Date().valueOf() - new Date(result[i].date).valueOf() > THIRTY_MINUTES) {
           console.log("writing - skip old transactions")
-          let rit = await collection.updateOne({ txid: result[i].txid }, { $set: { completed: true } })
+          let rit = await requestsCollection.updateOne({ txid: result[i].txid }, { $set: { completed: true } })
           console.log(rit, "rit")
         }
         continue;
@@ -49,7 +50,7 @@ export async function checkDeposit() {
       const balance = data.results[0].overall_balance;
       console.log({ balance })
       if (balance >= result[i].amount) {
-        await collection.updateOne({ txid: result[i].txid }, { $set: { deposited: true } })
+        await requestsCollection.updateOne({ txid: result[i].txid }, { $set: { deposited: true } })
         const tokensMinted = await mintTokens(provider, contract, value, from)
         console.log("💰 DEPOSITed! So minting now!", { tokensMinted })
       }
@@ -59,7 +60,7 @@ export async function checkDeposit() {
 
 export async function checkWithdraw() {
   let query = { $and: [{ completed: false }, { burnt: true}] };
-  let result = await collection.find(query)
+  let result = await requestsCollection.find(query)
     .toArray();
 
   console.log("connected", result)
@@ -72,7 +73,7 @@ export async function checkWithdraw() {
       // Check Tx confirmation count
       if (balance >= result[i].amount) {
         console.log("💸 WITHDREWed!", { data: result[i] })
-        await collection.updateOne({ txid: result[i].txid }, { $set: { completed: true } })
+        await requestsCollection.updateOne({ txid: result[i].txid }, { $set: { completed: true } })
       }
     }
   }
@@ -88,16 +89,13 @@ const handleMintedEvent = async (
   console.log('value :>> ', value)
   console.log('============================')
 
-  if (from == process.env.WALLET_ZERO) {
-    console.log('Tokens minted')
-    return
-  }
+  console.log('Tokens minted')
 
   let query = { $and: [{ completed: false }, { deposited: true }, {ethAddress: from}, {token: contractDest}] };
-  let result = await collection.find(query).limit(1)
+  let result = await requestsCollection.find(query).limit(1)
     .toArray();
   if (!result) return;
-  await collection.updateOne({ txid: result[0].txid }, { $set: { completed: true } })
+  await requestsCollection.updateOne({ txid: result[0].txid }, { $set: { completed: true } })
 }
 
 const sendOrdinalsInscriptions = async ({
@@ -195,10 +193,10 @@ const handleDestinationEvent = async (
       // )
 
       let query = { $and: [{ completed: false }, { burnt: false }, {ethAddress: from}, {token: contractDest}] };
-      let result = await collection.find(query).limit(1)
+      let result = await requestsCollection.find(query).limit(1)
         .toArray();
       if (!result) return;
-      await collection.updateOne([{ completed: false }, { burnt: false }, {ethAddress: from}, {token: contractDest}], { $set: { burnt: true } })
+      await requestsCollection.updateOne([{ completed: false }, { burnt: false }, {ethAddress: from}, {token: contractDest}], { $set: { burnt: true } })
       const transferBack = await sendOrdinalsInscriptions({
         // to: 
       })
