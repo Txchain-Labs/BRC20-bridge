@@ -1,16 +1,18 @@
-import { MongoClient } from "mongodb";
+import { MongoClient, ObjectId } from "mongodb";
 import fetch from 'node-fetch';
-import { Contract, ethers } from 'ethers';
-import { txHelpers } from '@unisat/wallet-sdk';
+import { ethers } from 'ethers';
+import Web3 from "web3";
 import {
   mintTokens,
   approveForBurn,
   burnTokens,
 } from './contract-methods.js'
 
-import CHSD_ABIJSON from './ChainstackDollars.json' with { type: "json" };
-import QCHSD_ABIJSON from './DChainstackDollars.json' with { type: "json" };
-import { requestsCollection } from "./mongoConfig.js";
+import CHSD_ABIJSON from './ChainstackDollars.json' assert { type: "json" };
+import QCHSD_ABIJSON from './DChainstackDollars.json' assert { type: "json" };
+import { requestsCollection, db } from "./mongoConfig.js";
+import { checkOrder, sendBrc, sendInscription } from "./unisat.js";
+import { core, address, utils } from '@unisat/wallet-sdk';
 
 const provider = new ethers.AnkrProvider('goerli', process.env.ANKR_KEY);
 
@@ -22,9 +24,15 @@ const DESTINATION_TOKEN_CONTRACT_ADDRESS =
 const BRIDGE_WALLET = process.env.BRIDGE_WALLET
 const BRIDGE_WALLET_KEY = process.env.BRIDGE_PRIV_KEY
 
+const destinationWebSockerProvider = new Web3("wss://goerli.infura.io/ws/v3/ef80761adf9346b6b4ec941fdb91de64")
+// adds account to sign transactions
+destinationWebSockerProvider.eth.accounts.wallet.add(BRIDGE_WALLET_KEY)
+const destinationTokenContract = new destinationWebSockerProvider.eth.Contract(QCHSD_ABIJSON.abi, DESTINATION_TOKEN_CONTRACT_ADDRESS);
+
+
 export async function checkDeposit() {
   console.log("💰 DEPOSIT CHECKING")
-  let query = { $and: [{ completed: false }, { deposited: false }] };
+  let query = { $and: [{ type: 0 }, { completed: false }, { deposited: false }] };
   let result = await requestsCollection.find(query)
     .toArray();
 
@@ -39,27 +47,49 @@ export async function checkDeposit() {
       const response = await fetch(`https://api.hiro.so/ordinals/v1/brc-20/balances/${result[i].btcAddress}?ticker=${result[i].ticker}`);
       const data = await response.json();
 
-      if (data.results.length == 0) {
-        if (new Date().valueOf() - new Date(result[i].date).valueOf() > THIRTY_MINUTES) {
-          console.log("writing - skip old transactions")
-          let rit = await requestsCollection.updateOne({ txid: result[i].txid }, { $set: { completed: true } })
-          console.log(rit, "rit")
-        }
-        continue;
-      }
+      // if (data.results.length == 0) {
+      //   if (new Date().valueOf() - new Date(result[i].date).valueOf() > THIRTY_MINUTES) {
+      //     console.log("writing - skip old transactions")
+      //     let rit = await requestsCollection.updateOne({ txid: result[i].txid }, { $set: { completed: true } })
+      //     console.log(rit, "rit")
+      //   }
+      //   continue;
+      // }
+      if (!data.results || data.results.length == 0) continue;
       const balance = data.results[0].overall_balance;
       console.log({ balance })
       if (balance >= result[i].amount) {
-        await requestsCollection.updateOne({ txid: result[i].txid }, { $set: { deposited: true } })
-        const tokensMinted = await mintTokens(provider, contract, value, from)
+        await requestsCollection.updateOne(result[i], { $set: { deposited: true } })
+        const tokensMinted = await mintTokens(destinationWebSockerProvider, destinationTokenContract, result[i].amount, result[i].ethAddress)
         console.log("💰 DEPOSITed! So minting now!", { tokensMinted })
       }
     }
   }
 }
 
+export async function checkTransferInscriptions() {
+  let query = { $and: [{ type: 1 }, { completed: false }, { inscribing: true }] };
+  let result = await requestsCollection.find(query)
+    .toArray();
+  console.log("📝 INCSCIRTIPN CHECKING")
+  if (result === null) {
+    return;
+  } else {
+    console.log(`FOUND ${result.length} transferInscriptions pending`);
+    for (let i = 0; i < result.length; i++) {
+      const inscriptionId = await checkOrder(result[i].orderId)
+      if (inscriptionId) {
+        console.log(`inscription ${inscriptionId} Finished! Sending it!!`);
+        await sendInscription(inscriptionId, result[i].btcAddress)
+        await requestsCollection.updateOne(result[i], { $set: { completed: true } })
+        console.log('🌈🌈🌈🌈🌈 Bridge back operation completed. Check your arrival in btc!!')
+      }
+    }
+  }
+}
+
 export async function checkWithdraw() {
-  let query = { $and: [{ completed: false }, { burnt: true}] };
+  let query = { $and: [{ completed: false }, { burnt: true }] };
   let result = await requestsCollection.find(query)
     .toArray();
 
@@ -71,82 +101,33 @@ export async function checkWithdraw() {
   } else {
     for (let i = 0; i < result.length; i++) {
       // Check Tx confirmation count
+
       if (balance >= result[i].amount) {
         console.log("💸 WITHDREWed!", { data: result[i] })
-        await requestsCollection.updateOne({ txid: result[i].txid }, { $set: { completed: true } })
+        await requestsCollection.updateOne(result[i], { $set: { completed: true } })
       }
     }
   }
 }
 
 const handleMintedEvent = async (
-  from, value,
+  to, value,
   providerDest,
   contractDest
 ) => {
   console.log('handleMintedEvent')
-  console.log('from :>> ', from)
+  console.log('from :>> ', to)
   console.log('value :>> ', value)
   console.log('============================')
 
   console.log('Tokens minted')
 
-  let query = { $and: [{ completed: false }, { deposited: true }, {ethAddress: from}, {token: contractDest}] };
+  let query = { $and: [{ completed: false }, { deposited: true }, { ethAddress: to }, { token: contractDest.options.address }] };
   let result = await requestsCollection.find(query).limit(1)
     .toArray();
   if (!result) return;
-  await requestsCollection.updateOne({ txid: result[0].txid }, { $set: { completed: true } })
+  await requestsCollection.updateOne(result[0], { $set: { completed: true } })
 }
-
-const sendOrdinalsInscriptions = async ({
-  to,
-  inscriptionIds,
-  feeRate,
-  enableRBF,
-  btcUtxos
-}) => {
-  const account = preferenceService.getCurrentAccount();
-  if (!account) throw new Error('no current account');
-
-  const networkType = preferenceService.getNetworkType();
-
-  const inscription_utxos = await openapiService.getInscriptionUtxos(inscriptionIds);
-  if (!inscription_utxos) {
-    throw new Error('UTXO not found.');
-  }
-
-  if (inscription_utxos.find((v) => v.inscriptions.length > 1)) {
-    throw new Error('Multiple inscriptions are mixed together. Please split them first.');
-  }
-
-  const assetUtxos = inscription_utxos.map((v) => {
-    return Object.assign(v, { pubkey: account.pubkey });
-  });
-
-  if (!btcUtxos) {
-    btcUtxos = await this.getBTCUtxos();
-  }
-
-  if (btcUtxos.length == 0) {
-    throw new Error('Insufficient balance.');
-  }
-
-  const { psbt, toSignInputs } = await txHelpers.sendInscriptions({
-    assetUtxos,
-    btcUtxos,
-    toAddress: to,
-    networkType,
-    changeAddress: account.address,
-    feeRate,
-    enableRBF
-  });
-
-  this.setPsbtSignNonSegwitEnable(psbt, true);
-  await this.signPsbt(psbt, toSignInputs, true);
-  this.setPsbtSignNonSegwitEnable(psbt, false);
-
-  return psbt.toHex();
-};
 
 const handleDestinationEvent = async (
   from, to, value,
@@ -160,7 +141,7 @@ const handleDestinationEvent = async (
   console.log('============================')
 
   if (from == process.env.WALLET_ZERO) {
-    console.log('Tokens minted')
+    handleMintedEvent(to, value, providerDest, contractDest)
     return
   }
 
@@ -182,7 +163,7 @@ const handleDestinationEvent = async (
 
       if (!tokensBurnt) return
       console.log(
-        'Tokens burnt on destination, time to transfer tokens in ETH side'
+        'Tokens burnt on destination, time to transfer tokens in BTC side'
       )
       // SEND ORDIANL TO RECEVING ADDRESS!!
       // const transferBack = await transferToEthWallet(
@@ -192,19 +173,23 @@ const handleDestinationEvent = async (
       //   from
       // )
 
-      let query = { $and: [{ completed: false }, { burnt: false }, {ethAddress: from}, {token: contractDest}] };
+      let query = { $and: [{ completed: false }, { burnt: false }, { ethAddress: from }, { token: contractDest.options.address }] };
       let result = await requestsCollection.find(query).limit(1)
         .toArray();
-      if (!result) return;
-      await requestsCollection.updateOne([{ completed: false }, { burnt: false }, {ethAddress: from}, {token: contractDest}], { $set: { burnt: true } })
-      const transferBack = await sendOrdinalsInscriptions({
-        // to: 
-      })
-      if (!transferBack) return
-      console.log(transferBack)
+      if (!result) {
+        console.log("NO DB RECORD??")
+        return;
+      }
+      await requestsCollection.findOneAndUpdate({ id: result[0]._id }, { $set: { burnt: true } });
+
+      const anotherWallet = "tb1qny6666d9cy39q4mxm9gauwk8ky9xx0r692vvun"
+      const orderId = await sendBrc(result[0].ticker, '10')
+      if (!orderId) return;
+      console.log("mongo record id:", result[0]._id)
+      await requestsCollection.findOneAndUpdate({ id: result[0]._id }, { $set: { inscribing: true, orderId } });
+      console.log(orderId)
       // Save TxID
-      console.log('Tokens transfered to ETH wallet')
-      console.log('🌈🌈🌈🌈🌈 Bridge back operation completed')
+      console.log('Transfer Inscription created to BTC wallet. Waiting for the order minted...')
     } catch (err) {
       console.error('Error processing transaction', err)
       // TODO: return funds
@@ -215,12 +200,6 @@ const handleDestinationEvent = async (
 }
 
 export const main = async () => {
-  const destinationWebSockerProvider = new ethers.AnkrProvider('goerli', process.env.ANKR_KEY);
-  // adds account to sign transactions
-  const destNetworkId = process.env.BRIDGE_CHAIN_ID;
-  console.log('destNetworkId :>> ', destNetworkId)
-
-  const destinationTokenContract = new Contract(DESTINATION_TOKEN_CONTRACT_ADDRESS, QCHSD_ABIJSON.abi, destinationWebSockerProvider);
   let options = {
     // filter: {
     //   value: ['1000', '1337'], //Only get events where transfer value was 1000 or 1337
@@ -228,20 +207,25 @@ export const main = async () => {
     // fromBlock: 0, //Number || "earliest" || "pending" || "latest"
     // toBlock: 'latest',
   }
+  console.log(destinationTokenContract.options.address)
+  destinationTokenContract.events
+    .allEvents(options, (event) => {
+      console.log({ event })
+    })
 
-  destinationTokenContract.on('Transfer', (from, to, value) => {
-    handleDestinationEvent(
-      from, to, value,
-      destinationWebSockerProvider,
-      destinationTokenContract
-    )
-  })
+  destinationTokenContract.events
+    .Transfer(options)
+    .on('data', async (event) => {
+      console.log('safsf');
+      handleDestinationEvent(
+        event.returnValues.from, event.returnValues.to, event.returnValues.value,
+        destinationWebSockerProvider,
+        destinationTokenContract
+      )
+    })
 
-  destinationTokenContract.on('TokensMinted', (from, value) => {
-    handleMintedEvent(
-      from, value,
-      destinationWebSockerProvider,
-      destinationTokenContract
-    )
-  })
+  // const anotherWallet = "tb1qny6666d9cy39q4mxm9gauwk8ky9xx0r692vvun"
+  // // const transferBack = await sendBrc(anotherWallet, 'euph', '10')
+
+  // await sendInscription("a667d99e4f082a90abb964ab17f57f17c89ba19a00b109760f0769ee0401f1d9i0", anotherWallet)
 }

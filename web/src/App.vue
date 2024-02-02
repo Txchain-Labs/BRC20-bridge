@@ -5,22 +5,18 @@ import { defineComponent } from 'vue'
 import NavBar from '@/components/Navbar.vue'
 import Nav from '@/components/Nav.vue'
 
-import Footer from '@/components/Footer.vue'
-
 export default defineComponent({
   setup() {
     return {}
   },
-  components: { NavBar, Nav, Footer },
+  components: { NavBar, Nav },
 })
 </script>
 
 <template>
   <div class="flex flex-col h-screen justify-between">
-    <NavBar />
     <Nav />
     <router-view class="container max-w-8xl mx-auto mb-auto px-4" />
-    <Footer />
   </div>
 </template>
 

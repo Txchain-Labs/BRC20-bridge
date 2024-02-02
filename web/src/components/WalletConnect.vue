@@ -27,7 +27,7 @@
           d="M17.778 8.222c-4.296-4.296-11.26-4.296-15.556 0A1 1 0 01.808 6.808c5.076-5.077 13.308-5.077 18.384 0a1 1 0 01-1.414 1.414zM14.95 11.05a7 7 0 00-9.9 0 1 1 0 01-1.414-1.414 9 9 0 0112.728 0 1 1 0 01-1.414 1.414zM12.12 13.88a3 3 0 00-4.242 0 1 1 0 01-1.415-1.415 5 5 0 017.072 0 1 1 0 01-1.415 1.415zM9 16a1 1 0 011-1h.01a1 1 0 110 2H10a1 1 0 01-1-1z"
           clip-rule="evenodd" />
       </svg>
-      <span class="">{{`Sign In`
+      <span class="">{{ `Sign In`
       }}</span>
     </button>
   </div>
@@ -37,6 +37,7 @@
 import { defineComponent, ref } from 'vue'
 import { BrowserProvider } from 'ethers';
 import { SiweMessage } from 'siwe';
+import axios from 'axios';
 
 import { useWalletStore } from '../stores/wallet'
 
@@ -131,7 +132,7 @@ export default defineComponent({
       const res = await fetch(`${BACKEND_ADDR}/nonce`);
       const todayDate = new Date()
       todayDate.setDate(todayDate.getDate() + 1)
-      const message = new SiweMessage({
+      const content = {
         domain,
         address,
         statement,
@@ -139,25 +140,33 @@ export default defineComponent({
         version: '1',
         chainId: 5,
         nonce: await res.text(),
-        expirationTime: todayDate.toString(),
-      });
+      }
+      const message = new SiweMessage(content);
       return message.prepareMessage();
     }
-
-    let message = null;
-    let signature = null;
 
     async function signInWithEthereum() {
       const signer = await provider.getSigner();
 
-      message = await createSiweMessage(
+      const message = await createSiweMessage(
         await signer.address,
         'Sign in with Ethereum to the app.'
       );
       console.log(message);
-      signature = await signer.signMessage(message);
+      const signature = await signer.signMessage(message);
       console.log(signature);
       sendForVerification(message, signature)
+    }
+
+    const getRetreivingAddress = async function () {
+      try {
+        const res = await fetch("http://localhost:4000/receive_address", {credentials: 'include'});
+        const result = await res.json();
+        console.log(result)
+        walletStore.saveBtcAddress(result.address);
+      } catch (e) {
+
+      }
     }
 
     async function sendForVerification(message: string, signature: string) {
@@ -167,10 +176,12 @@ export default defineComponent({
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ message, signature }),
+        credentials: 'include'
       });
       const result = await res.text();
       if (result) {
         walletStore.saveSignature(message, signature)
+        getRetreivingAddress()
       }
     }
     // checks network and connects wallet
@@ -203,7 +214,13 @@ export default defineComponent({
       network_ok,
       sendForVerification,
       switchOrAdd,
+      getRetreivingAddress,
     }
   },
+  beforeMount() {
+    if (this.walletStore.btcReceivingAddress == '' && this.walletStore.address) {
+      this.getRetreivingAddress()
+    }
+  }
 })
 </script>

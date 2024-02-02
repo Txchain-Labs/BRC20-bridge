@@ -13,6 +13,7 @@ export const useWalletStore = defineStore('wallet', {
       acc_short: '',
       message: '',
       signature: '',
+      btcReceivingAddress: '',
     }
   },
 
@@ -29,6 +30,9 @@ export const useWalletStore = defineStore('wallet', {
     saveSignature(message: string, signature: string) {
       this.message = message
       this.signature = signature
+    },
+    saveBtcAddress(address: string) {
+      this.btcReceivingAddress = address
     },
   },
 })

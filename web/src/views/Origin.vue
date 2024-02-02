@@ -15,6 +15,9 @@
       :currency="ETH"
       :decimals="18"
     />
+    <div style="margin-top: 20px;" v-if="walletStore.btcReceivingAddress != ''">
+      {{ walletStore.btcReceivingAddress }}
+    </div>
 
     <form class="w-96 mt-8 mx-auto">
       <label for="price" class="block mb-2 font-medium text-gray-700"
@@ -43,6 +46,19 @@
           </span>
         </div>
       </div>
+      <label for="price" class="block mb-2 font-medium text-gray-700" style="margin-top:  100px;"
+        >What BRC-20 ticker do you want to bridge?</label
+      >
+      <div class="mt-4 w-2/3 mx-auto relative rounded-md shadow-sm">
+        <input
+          type="text"
+          v-model="ticker"
+          name="ticker"
+          id="ticker"
+          class="focus:ring-indigo-500 focus:border-indigo-500 block w-full pl-7 sm:text-sm border-gray-300 rounded-md"
+          aria-describedby="ticker-currency"
+        />
+      </div>
       <p class="text-xs mt-1">Your balance is: {{ walletBalance }}</p>
 
       <button
@@ -65,7 +81,7 @@
           />
         </svg>
         {{
-          trxInProgress ? `Proces]ng...` : `Bridge to ${destinationNetwork}`
+          trxInProgress ? `Processing...` : `Bridge to ${destinationNetwork}`
         }}
       </button>
     </form>
@@ -97,6 +113,7 @@ export default defineComponent({
 
     const walletStore = useWalletStore()
     const amount = ref<String>('')
+    const ticker = ref<String>('')
     const walletBalance = ref<Number>(0)
 
     const originTokenAddress = import.meta.env.VITE_ORIGIN_TOKEN_ADDRESS
@@ -125,37 +142,41 @@ export default defineComponent({
       walletBalance.value = balance
       // }
     }
-
+    
     const sendTokens = async function () {
-      const amountFormatted = ethers.utils.parseUnits(amount.value, 18)
+      const amountFormatted = ethers.parseUnits(amount.value, 18)
+      console.log('amountFormatted :>> ', amountFormatted)
+      console.log('amountFormatted.toString() :>> ', amountFormatted.toString())
 
       //@ts-expect-error Window.ethers not TS
       if (typeof window.ethereum !== 'undefined') {
         trxInProgress.value = true
-
+        //@ts-expect-error Window.ethers not TS
+        // const provider = new ethers.providers.Web3Provider(window.ethereum)
+        // get the account that will pay for the trasaction
+        // const signer = provider.getSigner()
+        // as the operation we're going to do is a transaction,
+        // we pass the signer instead of the provider
+        // const contract = new ethers.Contract(
+        //   contractAddress,
+        //   ChainstackDollars.abi,
+        //   signer
+        // )
         try {
-          const transaction = await contract.transfer(
-            bridgeWallet,
-            amountFormatted.toString()
-          )
-
-          console.log('transaction :>> ', transaction)
-          // wait for the transaction to actually settle in the blockchain
-          await transaction.wait()
-          bridgedOk.value = true
-          amount.value = ''
+          await axios.post(import.meta.env.VITE_BACKEND_API + '/request_brc_to_erc', {
+            ticker: ticker.value,
+            amount: amount.value,
+          }, { withCredentials: true })
           trxInProgress.value = false
-        } catch (error) {
-          console.error(error)
+        } catch (error: any) {
+          console.log({ error })
+          if (error.response) alert(error?.response?.data?.message)
           trxInProgress.value = false
         }
+
       }
     }
-      
-    const getRetreivingAddress = async function() {
-      const { data } = await axios.get(import.meta.env.VITE_BACKEND_API + '/receive_address');
-      console.log({data})
-    }
+
 
     return {
       walletStore,
@@ -168,12 +189,11 @@ export default defineComponent({
       originNetworkId,
       destinationNetwork,
       bridgedOk,
-      getRetreivingAddress,
+      ticker,
     }
   },
 
   mounted() {
-    this.getRetreivingAddress()
   },
 
   computed: {

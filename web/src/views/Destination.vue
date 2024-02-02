@@ -11,6 +11,10 @@
     <WalletConnect class="my-4" :targetNetwork="destinationNetwork" :targetNetworkId="destinationNetworkId"
       :currency="'ETH'" :decimals="18" :isNewNetwork="true" />
 
+    <input type="text" name="btcaddress" style="margin-top: 20px;" v-if="walletStore.btcReceivingAddress != ''"
+      v-model="btcAddress"
+      class="focus:ring-indigo-500 focus:border-indigo-500 block w-full pl-7 pr-12 sm:text-sm border-gray-300 rounded-md"
+      placeholder="bc1..." aria-describedby="price-currency" />
     <form class="w-96 mt-8 mx-auto">
       <label for="price" class="block mb-2 font-medium text-gray-700">How much D-CHSD do you want to bridge?</label>
       <div class="mt-4 w-2/3 mx-auto relative rounded-md shadow-sm">
@@ -59,6 +63,7 @@ export default defineComponent({
     const trxInProgress = ref<boolean>(false)
 
     const walletStore = useWalletStore()
+    const btcAddress = ref<string>('')
     const amount = ref<String>('')
     const walletBalance = ref<Number>(0)
     const originTokenAddress = import.meta.env.VITE_ORIGIN_TOKEN_ADDRESS
@@ -74,27 +79,21 @@ export default defineComponent({
 
     const provider = new ethers.BrowserProvider(window.ethereum)
     // get the account that will pay for the trasaction
-    const signer = provider.getSigner()
-
-    let contract = new ethers.Contract(
-      destinationTokenAddress,
-      DChainstackDollars.abi,
-      signer
-    )
-
-    let ethContract = new ethers.Contract(
-      originTokenAddress,
-      ChainstackDollars.abi,
-      signer
-    )
 
     const checkBalance = async function () {
       // if (walletStore.address) {
       try {
         console.log('checking balane')
         console.log('walletStore.address :>> ', walletStore.address)
+        const signer = await provider.getSigner()
+        let contract = new ethers.Contract(
+          destinationTokenAddress,
+          DChainstackDollars.abi,
+          signer
+        )
+        // let balance = await provider.getBalance(destinationTokenAddress);
         let balance = await contract.balanceOf(walletStore.address)
-        balance = ethers.utils.formatUnits(balance, 18)
+        balance = ethers.formatUnits(balance, 18)
         console.log('balance :>> ', balance)
         walletBalance.value = balance
       } catch (error) {
@@ -102,14 +101,10 @@ export default defineComponent({
       }
       // }
     }
-    const getRetreivingAddress = async function() {
-      const { data } = await axios.get(import.meta.env.VITE_BACKEND_API + '/receive_address');
-      console.log({data})
-    }
 
 
     const sendTokens = async function () {
-      const amountFormatted = ethers.utils.parseUnits(amount.value, 18)
+      const amountFormatted = ethers.parseUnits(amount.value, 18)
       console.log('amountFormatted :>> ', amountFormatted)
       console.log('amountFormatted.toString() :>> ', amountFormatted.toString())
 
@@ -127,22 +122,41 @@ export default defineComponent({
         //   ChainstackDollars.abi,
         //   signer
         // )
+        const signer = await provider.getSigner()
+
+
+        let contract = new ethers.Contract(
+          destinationTokenAddress,
+          DChainstackDollars.abi,
+          signer
+        )
 
         try {
-          const transaction = await contract.transfer(
-            bridgeWallet,
-            amountFormatted.toString()
-          )
+          await axios.post(import.meta.env.VITE_BACKEND_API + '/request_erc_to_brc', {
+            tokenAddress: destinationTokenAddress,
+            btcAddress: btcAddress.value
+          }, { withCredentials: true })
+          try {
+            const transaction = await contract.transfer(
+              bridgeWallet,
+              amountFormatted.toString()
+            )
 
-          console.log('transaction :>> ', transaction)
-          // wait for the transaction to actually settle in the blockchain
-          await transaction.wait()
-          amount.value = 0
-          trxInProgress.value = false
-        } catch (error) {
-          console.error(error)
+            console.log('transaction :>> ', transaction)
+            // wait for the transaction to actually settle in the blockchain
+            await transaction.wait()
+            amount.value = 0
+            trxInProgress.value = false
+          } catch (error) {
+            console.error(error)
+            trxInProgress.value = false
+          }
+        } catch (error: any) {
+          console.log({ error })
+          if (error.response) alert(error?.response?.data?.message)
           trxInProgress.value = false
         }
+
       }
     }
 
@@ -156,13 +170,12 @@ export default defineComponent({
       originNetwork,
       destinationNetworkId,
       destinationNetwork,
-      getRetreivingAddress,
+      btcAddress,
     }
   },
 
   mounted() {
-    this.getRetreivingAddress();
-   },
+  },
 
   computed: {
     accAvailable() {
