@@ -11,7 +11,7 @@ import {
 import CHSD_ABIJSON from './ChainstackDollars.json' assert { type: "json" };
 import QCHSD_ABIJSON from './DChainstackDollars.json' assert { type: "json" };
 import { requestsCollection, db } from "./mongoConfig.js";
-import { checkOrder, sendBrc, sendInscription } from "./unisat.js";
+import { checkOrder, sendBrc, sendInscription, brcbalance } from "./unisat.js";
 import { core, address, utils } from '@unisat/wallet-sdk';
 
 const provider = new ethers.AnkrProvider('goerli', process.env.ANKR_KEY);
@@ -41,26 +41,13 @@ export async function checkDeposit() {
   if (result === null) {
     return;
   } else {
-
     for (let i = 0; i < result.length; i++) {
 
-      const response = await fetch(`https://api.hiro.so/ordinals/v1/brc-20/balances/${result[i].btcAddress}?ticker=${result[i].ticker}`);
-      const data = await response.json();
-
-      // if (data.results.length == 0) {
-      //   if (new Date().valueOf() - new Date(result[i].date).valueOf() > THIRTY_MINUTES) {
-      //     console.log("writing - skip old transactions")
-      //     let rit = await requestsCollection.updateOne({ txid: result[i].txid }, { $set: { completed: true } })
-      //     console.log(rit, "rit")
-      //   }
-      //   continue;
-      // }
-      if (!data.results || data.results.length == 0) continue;
-      const balance = data.results[0].overall_balance;
+      const balance = await brcbalance(result[i].btcAddress, result[i].ticker)
       console.log({ balance })
       if (balance >= result[i].amount) {
-        await requestsCollection.updateOne(result[i], { $set: { deposited: true } })
-        const tokensMinted = await mintTokens(destinationWebSockerProvider, destinationTokenContract, result[i].amount, result[i].ethAddress)
+        await requestsCollection.updateOne(result[i], { $set: { deposited: true, completed: true } }) // should not complete
+        const tokensMinted = await mintTokens(destinationWebSockerProvider, destinationTokenContract, ethers.parseUnits(result[i].amount, 18), result[i].ethAddress)
         console.log("💰 DEPOSITed! So minting now!", { tokensMinted })
       }
     }
@@ -180,13 +167,13 @@ const handleDestinationEvent = async (
         console.log("NO DB RECORD??")
         return;
       }
-      await requestsCollection.findOneAndUpdate({ id: result[0]._id }, { $set: { burnt: true } });
+      await requestsCollection.updateOne(result[0], { $set: { burnt: true } });
 
       const anotherWallet = "tb1qny6666d9cy39q4mxm9gauwk8ky9xx0r692vvun"
-      const orderId = await sendBrc(result[0].ticker, '10')
+      const orderId = await sendBrc(result[0].ticker, value)
       if (!orderId) return;
       console.log("mongo record id:", result[0]._id)
-      await requestsCollection.findOneAndUpdate({ id: result[0]._id }, { $set: { inscribing: true, orderId } });
+      await requestsCollection.updateOne(result[0], { $set: { inscribing: true, orderId } });
       console.log(orderId)
       // Save TxID
       console.log('Transfer Inscription created to BTC wallet. Waiting for the order minted...')

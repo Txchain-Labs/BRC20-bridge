@@ -89,6 +89,19 @@ async function getBTCUtxos(wallet) {
   });
 }
 
+export async function brcbalance(address, ticker) {
+  const { data: info } = await axios.get(`https://open-api-testnet.unisat.io/v1/indexer/address/${address}/brc20/${ticker}/info`, {
+    headers: {
+      Accept: 'application/json',
+      Authorization: 'Bearer ' + UNISAT_API_KEY,
+      "X-Address": fromWallet.address,
+      "X-Client": "UniSat Wallet",
+    },
+  })
+  console.log({ info, address, ticker })
+  return info.overallBalance;
+}
+
 export async function sendBrc(ticker, brc20Amount) {
 
   console.log(process.env.BRIDGE_BTC_PRIVATE)
@@ -123,7 +136,7 @@ export async function sendBrc(ticker, brc20Amount) {
     feeRate: 1,
   });
 
-  const {data: response} = await broadcast(rawtx);
+  const { data: response } = await broadcast(rawtx);
   console.log({ response })
 
   return orderId;
@@ -184,7 +197,7 @@ export async function sendInscription(inscriptionId, toAddress) {
   if (btcUtxos.length == 0) {
     throw new Error('Insufficient balance.');
   }
-  console.log({assetUtxo})
+  console.log({ assetUtxo })
 
   const { psbt, toSignInputs } = await txHelpers.sendInscription({
     assetUtxo,
@@ -196,7 +209,7 @@ export async function sendInscription(inscriptionId, toAddress) {
     "outputValue": 546,
   });
 
-  
+
   await fromWallet.signPsbt(psbt, { autoFinalized: true, toSignInputs });
   const tx = psbt.extractTransaction(true);
   const rawtx = psbt.extractTransaction().toHex();
@@ -207,7 +220,7 @@ export async function sendInscription(inscriptionId, toAddress) {
   const virtualSize = tx.virtualSize();
   const finalFeeRate = parseFloat((fee / virtualSize).toFixed(1));
 
-  const {data: response} = await broadcast(rawtx);
+  const { data: response } = await broadcast(rawtx);
   console.log({ response })
 
   return response

@@ -126,7 +126,7 @@ export default defineComponent({
     const origin = window.location.origin;
     const provider = new BrowserProvider(window.ethereum);
 
-    const BACKEND_ADDR = "http://localhost:4000";
+    const BACKEND_ADDR = import.meta.env.VITE_BACKEND_API;
 
     async function createSiweMessage(address, statement) {
       const res = await fetch(`${BACKEND_ADDR}/nonce`);
@@ -158,16 +158,6 @@ export default defineComponent({
       sendForVerification(message, signature)
     }
 
-    const getRetreivingAddress = async function () {
-      try {
-        const res = await fetch("http://localhost:4000/receive_address", {credentials: 'include'});
-        const result = await res.json();
-        console.log(result)
-        walletStore.saveBtcAddress(result.address);
-      } catch (e) {
-
-      }
-    }
 
     async function sendForVerification(message: string, signature: string) {
       const res = await fetch(`${BACKEND_ADDR}/verify`, {
@@ -181,7 +171,6 @@ export default defineComponent({
       const result = await res.text();
       if (result) {
         walletStore.saveSignature(message, signature)
-        getRetreivingAddress()
       }
     }
     // checks network and connects wallet
@@ -214,13 +203,9 @@ export default defineComponent({
       network_ok,
       sendForVerification,
       switchOrAdd,
-      getRetreivingAddress,
     }
   },
   beforeMount() {
-    if (this.walletStore.btcReceivingAddress == '' && this.walletStore.address) {
-      this.getRetreivingAddress()
-    }
   }
 })
 </script>
