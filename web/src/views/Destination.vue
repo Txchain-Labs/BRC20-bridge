@@ -5,30 +5,31 @@
     </h1>
 
     <p>
-      This bridge allows you to send ChainstackDollars (D-CHSD) from {{ destinationNetwork }} back to {{ originNetwork }}
+      This bridge allows you to send wrapped BRC20 tokens from {{ destinationNetwork }} back to {{ originNetwork }}
     </p>
 
     <WalletConnect class="my-4" :targetNetwork="destinationNetwork" :targetNetworkId="destinationNetworkId"
       :currency="'ETH'" :decimals="18" :isNewNetwork="true" />
 
-    <input type="text" name="btcaddress" style="margin-top: 20px;" v-if="walletStore.btcReceivingAddress != ''"
-      v-model="btcAddress"
-      class="focus:ring-indigo-500 focus:border-indigo-500 block w-full pl-7 pr-12 sm:text-sm border-gray-300 rounded-md"
-      placeholder="bc1..." aria-describedby="price-currency" />
     <form class="w-96 mt-8 mx-auto">
-      <label for="price" class="block mb-2 font-medium text-gray-700">How much D-CHSD do you want to bridge?</label>
+      <label for="price" class="block mb-2 font-medium text-gray-700" style="margin-top:  100px;">Give your bitcoin
+        address to receive BRCs back</label>
+      <input type="text" name="btcaddress" style="margin-top: 20px;" v-model="btcAddress"
+        class="focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
+        placeholder="bc1..." aria-describedby="price-currency" />
+
+      <label for="price" class="block mb-2 font-medium text-gray-700" style="margin-top:  100px;">What BRC-20 token do
+        you want to bridge back?</label>
       <div class="mt-4 w-2/3 mx-auto relative rounded-md shadow-sm">
-        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-          <span class="text-gray-500 sm:text-sm"> $ </span>
-        </div>
-        <input type="text" v-model="amount" name="price" id="price"
-          class="focus:ring-indigo-500 focus:border-indigo-500 block w-full pl-7 pr-12 sm:text-sm border-gray-300 rounded-md"
+        <input type="text" v-model="tokenAddress" name="token" id="token"
+          class="focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
+          aria-describedby="token-currency" />
+      </div>
+      <label for="price" class="block mb-2 font-medium text-gray-700">How many tokens do you want to bridge back?</label>
+      <div class="mt-4 w-2/3 mx-auto relative rounded-md shadow-sm">
+        <input type="number" v-model="amount" name="price" id="price"
+          class="focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
           placeholder="0.00" aria-describedby="price-currency" />
-        <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-          <span class="text-gray-500 sm:text-sm" id="price-currency">
-            D-CHSD
-          </span>
-        </div>
       </div>
       <p class="text-xs mt-1">Your balance is: {{ walletBalance }}</p>
 
@@ -64,12 +65,9 @@ export default defineComponent({
 
     const walletStore = useWalletStore()
     const btcAddress = ref<string>('')
-    const amount = ref<String>('')
+    const amount = ref<number>(0)
     const walletBalance = ref<Number>(0)
-    const originTokenAddress = import.meta.env.VITE_ORIGIN_TOKEN_ADDRESS
-
-    const destinationTokenAddress = import.meta.env
-      .VITE_DESTINATION_TOKEN_ADDRESS
+    const tokenAddress = ref<string>('')
 
     const originNetwork = import.meta.env.VITE_ORIGIN_NETWORK_NAME
     const destinationNetwork = import.meta.env.VITE_DESTINATION_NETWORK_NAME
@@ -87,7 +85,7 @@ export default defineComponent({
         console.log('walletStore.address :>> ', walletStore.address)
         const signer = await provider.getSigner()
         let contract = new ethers.Contract(
-          destinationTokenAddress,
+          tokenAddress.value,
           DChainstackDollars.abi,
           signer
         )
@@ -104,7 +102,7 @@ export default defineComponent({
 
 
     const sendTokens = async function () {
-      const amountFormatted = ethers.parseUnits(amount.value, 18)
+      const amountFormatted = ethers.parseUnits(String(amount.value), 18)
       console.log('amountFormatted :>> ', amountFormatted)
       console.log('amountFormatted.toString() :>> ', amountFormatted.toString())
 
@@ -126,14 +124,14 @@ export default defineComponent({
 
 
         let contract = new ethers.Contract(
-          destinationTokenAddress,
+          tokenAddress.value,
           DChainstackDollars.abi,
           signer
         )
 
         try {
           await axios.post(import.meta.env.VITE_BACKEND_API + '/request_erc_to_brc', {
-            tokenAddress: destinationTokenAddress,
+            tokenAddress: tokenAddress.value,
             btcAddress: btcAddress.value
           }, { withCredentials: true })
           try {
@@ -171,6 +169,7 @@ export default defineComponent({
       destinationNetworkId,
       destinationNetwork,
       btcAddress,
+      tokenAddress
     }
   },
 

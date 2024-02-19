@@ -1,37 +1,57 @@
+import Web3 from "web3";
+import QCHSD_ABIJSON from './DChainstackDollars.json' assert { type: "json" };
+
 const BRIDGE_WALLET = process.env.BRIDGE_WALLET
-const ORIGIN_TOKEN_CONTRACT_ADDRESS = process.env.ORIGIN_TOKEN_CONTRACT_ADDRESS
-const DESTINATION_TOKEN_CONTRACT_ADDRESS =
-  process.env.DESTINATION_TOKEN_CONTRACT_ADDRESS
+const BRIDGE_WALLET_KEY = process.env.BRIDGE_PRIV_KEY
+let nonce = 0;
 
-export const mintTokens = async (provider, contract, amount, address) => {
+const provider = new Web3(new Web3.providers.HttpProvider("https://eth-sepolia.g.alchemy.com/v2/EiMk6jiht1swIUQsPCnIJcNLku7kMMw-"))
+// adds account to sign transactions
+provider.eth.getTransactionCount(BRIDGE_WALLET).then(res => nonce = res)
+provider.eth.accounts.wallet.add(BRIDGE_WALLET_KEY)
+
+const sendTransaction = async (token, data) => {
+  let txcount = await provider.eth.getTransactionCount(BRIDGE_WALLET);
+  console.log("txcount: >>", txcount)
+  console.log('nonce :>>', nonce)
+  nonce = Math.max(nonce, txcount)
+  const gasPrice = Number(await provider.eth.getGasPrice())
+
+  const trxData = {
+    // trx is sent from the bridge wallet
+    from: BRIDGE_WALLET,
+    // destination of the transaction is the ERC20 token address
+    to: token,
+    data,
+    gas: 1000000,
+    gasPrice: parseInt(gasPrice * 1.5),
+    nonce,
+  }
+  nonce ++;
+  return await provider.eth.sendTransaction(trxData)
+  // return await new Promise((resolve, reject) => {
+  //   const intervalId = setInterval(async () => {
+  //     const receipt = await provider.eth.sendTransaction(trxData)
+  //     clearInterval(intervalId);
+  //     resolve(receipt);
+  //   }, 10 * 60 * 1000);
+  //   provider.eth.sendTransaction(trxData).then((receipt) => {
+  //     clearInterval(intervalId);
+  //     resolve(receipt);
+  //   })
+  // })
+}
+
+
+export const mintTokens = async (token, amount, address) => {
   try {
+    const contract = new provider.eth.Contract(QCHSD_ABIJSON.abi, token);
     const trx = contract.methods.mint(address, amount)
-
-    const gas = await trx.estimateGas({ from: BRIDGE_WALLET })
-    console.log('gas :>> ', gas)
-    const gasPrice = await provider.eth.getGasPrice()
-    console.log('gasPrice :>> ', gasPrice)
     const data = trx.encodeABI()
     console.log('data :>> ', data)
-    const nonce = await provider.eth.getTransactionCount(BRIDGE_WALLET)
-
-    console.log('nonce :>> ', nonce)
-
-    const trxData = {
-      // trx is sent from the bridge wallet
-      from: BRIDGE_WALLET,
-      // destination of the transaction is the ERC20 token address
-      to: DESTINATION_TOKEN_CONTRACT_ADDRESS,
-
-      data,
-      gas,
-      gasPrice,
-      nonce,
-    }
-
     console.log('Transaction ready to be sent')
 
-    const receipt = await provider.eth.sendTransaction(trxData)
+    const receipt = await sendTransaction(token, data)
     console.log(`Transaction sent, hash is ${receipt.transactionHash}`)
     console.log(
       `mintTokens > You can see this transaction in ${process.env.DESTINATION_EXPLORER}${receipt.transactionHash}`
@@ -42,41 +62,18 @@ export const mintTokens = async (provider, contract, amount, address) => {
   }
 }
 
-export const transferToEthWallet = async (provider, contract, amount, address) => {
+export const transferToEthWallet = async (token, amount, address) => {
   try {
     console.log('Transfering tokens to ETH wallet 💸💸💸💸💸')
     console.log('address :>> ', address)
     console.log('amount :>> ', amount)
+    const contract = new provider.eth.Contract(QCHSD_ABIJSON.abi, token);
     const trx = contract.methods.transfer(address, amount)
-
-    const gas = await trx.estimateGas({ from: BRIDGE_WALLET })
-    console.log('gas :>> ', gas)
-    const gasPrice = await provider.eth.getGasPrice()
-    console.log('gasPrice :>> ', gasPrice)
     const data = trx.encodeABI()
     console.log('data :>> ', data)
-    const nonce = await provider.eth.getTransactionCount(BRIDGE_WALLET)
-
-    console.log('nonce :>> ', nonce)
-
-    const trxData = {
-      // trx is sent from the bridge wallet
-      from: BRIDGE_WALLET,
-      // destination of the transaction is the ERC20 token address
-      to: ORIGIN_TOKEN_CONTRACT_ADDRESS,
-      // data contains the amount and receiver params for transfer
-      data,
-      // TO TEST!!!
-      gas: Math.ceil(gas * 1.2),
-      gasPrice,
-      nonce,
-    }
-
-    // console.log('signedTrx :>> ', signedTrx.rawTransaction)
 
     console.log('Transaction ready to be sent')
-
-    const receipt = await provider.eth.sendTransaction(trxData)
+    const receipt = await sendTransaction(token, data)
     console.log(`Transaction sent, hash is ${receipt.transactionHash}`)
     console.log(
       `transferToEthWallet > You can see this transaction in ${process.env.ORIGIN_EXPLORER}${receipt.transactionHash}`
@@ -88,38 +85,18 @@ export const transferToEthWallet = async (provider, contract, amount, address) =
   }
 }
 
-export const approveForBurn = async (provider, contract, amount) => {
+export const approveForBurn = async (token, amount) => {
   try {
     console.log('Approving token burn 🔥🔥🔥🔥🔥')
     console.log('amount :>> ', amount)
-    console.log('contract.options.address :>> ', contract.options.address)
+    const contract = new provider.eth.Contract(QCHSD_ABIJSON.abi, token);
     const trx = contract.methods.approve(BRIDGE_WALLET, amount)
-
-    const gas = await trx.estimateGas({ from: BRIDGE_WALLET })
-    console.log('gas :>> ', gas)
-    const gasPrice = await provider.eth.getGasPrice()
-    console.log('gasPrice :>> ', gasPrice)
     const data = trx.encodeABI()
     console.log('data :>> ', data)
-    const nonce = await provider.eth.getTransactionCount(BRIDGE_WALLET)
-
-    console.log('nonce :>> ', nonce)
-
-    const trxData = {
-      // trx is sent from the bridge wallet
-      from: BRIDGE_WALLET,
-      // destination of the transaction is the ERC20 token address
-      to: contract.options.address,
-      data,
-      // hardcoded gasPrice as estimation is not correct
-      gas: 60000,
-      gasPrice,
-      nonce,
-    }
 
     console.log('Transaction ready to be sent')
 
-    const receipt = await provider.eth.sendTransaction(trxData)
+    const receipt = await sendTransaction(token, data)
     console.log(`Transaction sent, hash is ${receipt.transactionHash}`)
     console.log(
       `approveForBurn > You can see this transaction in ${process.env.DESTINATION_EXPLORER}${receipt.transactionHash}`
@@ -131,38 +108,17 @@ export const approveForBurn = async (provider, contract, amount) => {
   }
 }
 
-export const burnTokens = async (provider, contract, amount) => {
+export const burnTokens = async (token, amount) => {
   try {
     console.log('Burning tokens from wallet 🔥🔥🔥🔥🔥')
     console.log('amount :>> ', amount)
-    console.log('contract.options.address :>> ', contract.options.address)
+    const contract = new provider.eth.Contract(QCHSD_ABIJSON.abi, token);
     const trx = contract.methods.burnFrom(BRIDGE_WALLET, amount)
-
-    const gas = await trx.estimateGas({ from: BRIDGE_WALLET })
-    console.log('gas :>> ', gas)
-    const gasPrice = await provider.eth.getGasPrice()
-    console.log('gasPrice :>> ', gasPrice)
     const data = trx.encodeABI()
     console.log('data :>> ', data)
-    const nonce = await provider.eth.getTransactionCount(BRIDGE_WALLET)
-
-    console.log('nonce :>> ', nonce)
-
-    const trxData = {
-      // trx is sent from the bridge wallet
-      from: BRIDGE_WALLET,
-      // destination of the transaction is the ERC20 token address
-      to: contract.options.address,
-      data,
-      // hardcoded gasPrice as estimation is not correct
-      gas,
-      gasPrice,
-      nonce,
-    }
-
     console.log('Transaction ready to be sent')
 
-    const receipt = await provider.eth.sendTransaction(trxData)
+    const receipt = await sendTransaction(token, data)
     console.log(`Transaction sent, hash is ${receipt.transactionHash}`)
     console.log(
       `burnTokens > You can see this transaction in ${process.env.DESTINATION_EXPLORER}${receipt.transactionHash}`

@@ -99,7 +99,8 @@ export async function brcbalance(address, ticker) {
     },
   })
   console.log({ info, address, ticker })
-  return info.overallBalance;
+  if (info.msg == 'ok') return Number(info.data.overallBalance);
+  return 0;
 }
 
 export async function sendBrc(ticker, brc20Amount) {

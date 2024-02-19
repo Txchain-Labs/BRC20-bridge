@@ -3,43 +3,49 @@
     <h1 class="text-2xl font-bold mb-8">
       Bridge from {{ originNetwork }} to {{ destinationNetwork }}
     </h1>
-
     <p>
-      This bridge allows you to send ChainstackDollars (D-CHSD) from {{ originNetwork }} to {{ destinationNetwork }}
+      This bridge allows you to send BRC-20 tokens from {{ originNetwork }} to {{ destinationNetwork }}.
     </p>
+    <p>
+      You'll be given your address to send selected ticker.
+    </p>
+    <p>Once you've finished sending to the address in your wallet, same amount of wrapped tokens will be minted on your {{
+      destinationNetwork }} wallet
+      connected.</p>
 
+    <div style="margin-top: 100px;"></div>
     <WalletConnect class="my-4" :targetNetwork="originNetwork" :targetNetworkId="originNetworkId" :currency="ETH"
       :decimals="18" />
     <div v-if="walletStore.signature">
       <div style="margin-top: 20px;" v-if="walletStore.btcReceivingAddress != ''">
-        {{ walletStore.btcReceivingAddress }}
+        This is your exclusive receving address: <b> {{ walletStore.btcReceivingAddress }}</b>
+        <p>Note: All assets sent to this address will be regarded as bridge requests from you. </p>
+      </div>
+      <div style="margin-top: 20px;" v-if="walletStore.pendingRequests.length">
+        You have {{ walletStore.pendingRequests.length }} pending requests:
+        <div v-for="req in walletStore.pendingRequests">
+          Send <b> {{ req.amount }} </b> <b> {{ req.ticker }}</b>
+        </div>
       </div>
       <button style="margin-top: 20px;" v-else type="button" @click="checkReceivingAddress"
+        v-if="walletStore.btcReceivingAddress == ''"
         class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-indigo-500">
-        Check my receive address
+        Check my receive address and pending requests
       </button>
     </div>
     <form class="w-96 mt-8 mx-auto">
-      <label for="price" class="block mb-2 font-medium text-gray-700">How much CHSD do you want to bridge?</label>
-      <div class="mt-4 w-2/3 mx-auto relative rounded-md shadow-sm">
-        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-          <span class="text-gray-500 sm:text-sm"> $ </span>
-        </div>
-        <input type="text" v-model="amount" name="price" id="price"
-          class="focus:ring-indigo-500 focus:border-indigo-500 block w-full pl-7 pr-12 sm:text-sm border-gray-300 rounded-md"
-          placeholder="0.00" aria-describedby="price-currency" />
-        <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-          <span class="text-gray-500 sm:text-sm" id="price-currency">
-            CHSD
-          </span>
-        </div>
-      </div>
       <label for="price" class="block mb-2 font-medium text-gray-700" style="margin-top:  100px;">What BRC-20 ticker do
         you want to bridge?</label>
       <div class="mt-4 w-2/3 mx-auto relative rounded-md shadow-sm">
         <input type="text" v-model="ticker" name="ticker" id="ticker"
           class="focus:ring-indigo-500 focus:border-indigo-500 block w-full pl-7 sm:text-sm border-gray-300 rounded-md"
           aria-describedby="ticker-currency" />
+      </div>
+      <label style="margin-top: 20px;" for="price" class="block mb-2 font-medium text-gray-700">How many do you want to bridge?</label>
+      <div class="mt-4 w-2/3 mx-auto relative rounded-md shadow-sm">
+        <input type="number" v-model="amount" name="price" id="price"
+          class="focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
+          placeholder="0.00" aria-describedby="price-currency" />
       </div>
       <p class="text-xs mt-1">Your balance is: {{ walletBalance }}</p>
       <button type="button"
@@ -68,8 +74,6 @@ import { ethers, BigNumber } from 'ethers'
 import { useWalletStore } from '../stores/wallet'
 import WalletConnect from '@/components/WalletConnect.vue'
 
-import ChainstackDollars from '@/artifacts/contracts/OriginToken.sol/ChainstackDollars.json'
-
 import axios from "axios";
 
 export default defineComponent({
@@ -79,43 +83,22 @@ export default defineComponent({
     const bridgedOk = ref<boolean>(false)
 
     const walletStore = useWalletStore()
-    const amount = ref<String>('')
+    const amount = ref<number>(0)
     const ticker = ref<String>('')
     const walletBalance = ref<Number>(0)
-
-    const originTokenAddress = import.meta.env.VITE_ORIGIN_TOKEN_ADDRESS
 
     const originNetwork = import.meta.env.VITE_ORIGIN_NETWORK_NAME
     const originNetworkId = import.meta.env.VITE_ORIGIN_NETWORK_ID
     const destinationNetwork = import.meta.env.VITE_DESTINATION_NETWORK_NAME
 
-    const bridgeWallet = import.meta.env.VITE_BRIDGE_WALLET
-
-    const provider = new ethers.BrowserProvider(window.ethereum)
     // get the account that will pay for the trasaction
-    const signer = provider.getSigner()
-
-    let contract = new ethers.Contract(
-      originTokenAddress,
-      ChainstackDollars.abi,
-      signer
-    )
-
-    const checkBalance = async function () {
-      // if (walletStore.address) {
-      let balance = await contract.balanceOf(walletStore.address)
-      balance = ethers.utils.formatUnits(balance, 18)
-      console.log('balance :>> ', balance)
-      walletBalance.value = balance
-      // }
-    }
-
     const checkReceivingAddress = async function () {
       if (typeof window.ethereum !== 'undefined') {
         try {
-          const { data: { address } } = await axios.post(import.meta.env.VITE_BACKEND_API + '/receive_address', {}, { withCredentials: true })
+          const { data: { address, pendingRequests } } = await axios.post(import.meta.env.VITE_BACKEND_API + '/receive_address', {}, { withCredentials: true })
           trxInProgress.value = false
           walletStore.saveBtcAddress(address);
+          walletStore.savePendingRequests(pendingRequests)
         } catch (error: any) {
           console.log({ error })
           alert(error?.response?.data?.messsage)
@@ -125,31 +108,20 @@ export default defineComponent({
     }
 
     const sendTokens = async function () {
-      const amountFormatted = ethers.parseUnits(amount.value, 18)
+      const amountFormatted = ethers.parseUnits(String(amount.value), 18)
       console.log('amountFormatted :>> ', amountFormatted)
       console.log('amountFormatted.toString() :>> ', amountFormatted.toString())
 
-      //@ts-expect-error Window.ethers not TS
       if (typeof window.ethereum !== 'undefined') {
         trxInProgress.value = true
-        //@ts-expect-error Window.ethers not TS
-        // const provider = new ethers.providers.Web3Provider(window.ethereum)
-        // get the account that will pay for the trasaction
-        // const signer = provider.getSigner()
-        // as the operation we're going to do is a transaction,
-        // we pass the signer instead of the provider
-        // const contract = new ethers.Contract(
-        //   contractAddress,
-        //   ChainstackDollars.abi,
-        //   signer
-        // )
         try {
-          const { data: { toAddress } } = await axios.post(import.meta.env.VITE_BACKEND_API + '/request_brc_to_erc', {
+          const { data: { address, pendingRequests } } = await axios.post(import.meta.env.VITE_BACKEND_API + '/request_brc_to_erc', {
             ticker: ticker.value,
             amount: amount.value,
           }, { withCredentials: true })
           trxInProgress.value = false
-          walletStore.saveBtcAddress(toAddress);
+          walletStore.saveBtcAddress(address);
+          walletStore.savePendingRequests(pendingRequests)
         } catch (error: any) {
           console.log({ error })
           alert("You already sent the bridge request for this asset")
@@ -168,7 +140,6 @@ export default defineComponent({
       amount,
       walletBalance,
       sendTokens,
-      checkBalance,
       originNetwork,
       originNetworkId,
       destinationNetwork,
@@ -184,12 +155,6 @@ export default defineComponent({
   computed: {
     accAvailable() {
       return useWalletStore().address
-    },
-  },
-  watch: {
-    async accAvailable(newVal, old) {
-      console.log(`updating from ${old} to ${newVal}`)
-      await this.checkBalance()
     },
   },
 })

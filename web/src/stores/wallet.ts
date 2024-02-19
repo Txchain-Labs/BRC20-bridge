@@ -10,10 +10,12 @@ export const useWalletStore = defineStore('wallet', {
     return {
       address: '',
       provider: null,
+      network: '',
       acc_short: '',
       message: '',
       signature: '',
       btcReceivingAddress: '',
+      pendingRequests: [] as any[],
     }
   },
 
@@ -34,5 +36,8 @@ export const useWalletStore = defineStore('wallet', {
     saveBtcAddress(address: string) {
       this.btcReceivingAddress = address
     },
+    savePendingRequests(requests: any[]) {
+      this.pendingRequests = requests
+    }
   },
 })
