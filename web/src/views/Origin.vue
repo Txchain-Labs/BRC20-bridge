@@ -47,7 +47,6 @@
           class="focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
           placeholder="0.00" aria-describedby="price-currency" />
       </div>
-      <p class="text-xs mt-1">Your balance is: {{ walletBalance }}</p>
       <button type="button"
         class="inline-flex items-center px-4 py-2 mt-4 border border-transparent shadow-sm text-base font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
         @click="sendTokens">
@@ -85,7 +84,6 @@ export default defineComponent({
     const walletStore = useWalletStore()
     const amount = ref<number>(0)
     const ticker = ref<String>('')
-    const walletBalance = ref<Number>(0)
 
     const originNetwork = import.meta.env.VITE_ORIGIN_NETWORK_NAME
     const originNetworkId = import.meta.env.VITE_ORIGIN_NETWORK_ID
@@ -138,7 +136,6 @@ export default defineComponent({
       walletStore,
       trxInProgress,
       amount,
-      walletBalance,
       sendTokens,
       originNetwork,
       originNetworkId,

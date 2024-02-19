@@ -24,7 +24,7 @@
       <div class="mt-4 w-2/3 mx-auto relative rounded-md shadow-sm">
         <input type="text" v-model="tokenAddress" name="token" id="token"
           class="focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
-          aria-describedby="token-currency" />
+          aria-describedby="token-currency" placeholder="0x123A..." />
       </div>
       <label for="price" class="block mb-2 font-medium text-gray-700">How many tokens do you want to bridge back?</label>
       <div class="mt-4 w-2/3 mx-auto relative rounded-md shadow-sm">
