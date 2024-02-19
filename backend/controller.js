@@ -101,6 +101,7 @@ export async function checkDeposit() {
     console.log({ balance })
     if (balance >= Number(address.balance[result[i].ticker] ?? 0) + result[i].amount) {
       address.balance[result[i].ticker] = balance
+      console.log(address.balance)
       await addressesCollection.updateOne({ _id: address._id }, { $set: { balance: address.balance } })
       await requestsCollection.updateOne(result[i], { $set: { deposited: true } })
       const tokensMinted = await mintTokens(result[i].token, ethers.parseUnits(String(result[i].amount), 18), result[i].ethAddress)
@@ -153,28 +154,6 @@ export async function checkTransferInscriptions() {
   }
 }
 
-export async function checkWithdraw() {
-  let query = { $and: [{ completed: false }, { burnt: true }] };
-  let result = await requestsCollection.find(query)
-    .toArray();
-
-  console.log("connected", result)
-  console.log("💸 WITHDREW CHECKING!")
-
-  if (result === null) {
-    return;
-  } else {
-    for (let i = 0; i < result.length; i++) {
-      // Check Tx confirmation count
-
-      if (balance >= result[i].amount) {
-        console.log("💸 WITHDREWed!", { data: result[i] })
-        await requestsCollection.updateOne(result[i], { $set: { completed: true } })
-      }
-    }
-  }
-}
-
 const handleMintedEvent = async (
   token, to, value,
 ) => {
@@ -186,11 +165,13 @@ const handleMintedEvent = async (
 
   console.log('Tokens minted')
 
-  let query = { $and: [{ completed: false }, { deposited: true }, { ethAddress: to }, { token }] };
+  let query = { $and: [{ type: 0 }, { completed: false }, { deposited: true }, { ethAddress: to }, { token }] };
   let result = await requestsCollection.find(query).limit(1)
     .toArray();
   if (!result) return;
   await requestsCollection.updateOne(result[0], { $set: { completed: true } })
+  console.log('🌈🌈🌈🌈🌈 Bridge operation completed. Check your arrival in Ethereum wallet!!')
+
 }
 
 const handleDestinationEvent = async (

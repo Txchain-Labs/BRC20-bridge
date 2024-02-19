@@ -8,6 +8,7 @@
       This bridge allows you to send wrapped BRC20 tokens from {{ destinationNetwork }} back to {{ originNetwork }}
     </p>
 
+    <div style="margin-top: 100px;"></div>
     <WalletConnect class="my-4" :targetNetwork="destinationNetwork" :targetNetworkId="destinationNetworkId"
       :currency="'ETH'" :decimals="18" :isNewNetwork="true" />
 
